@@ -1,0 +1,125 @@
+---
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: labguidone
+  labels:
+    app: helloworld
+    version: dev
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: helloworld
+  namespace: labguidone
+  labels:
+    app: helloworld
+    version: dev
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  replicas: 3
+  selector:
+    matchLabels:
+      app: helloworld
+      version: dev
+  template:
+    metadata:
+      namespace: labguidone
+      labels:
+        app: helloworld
+        version: dev
+    spec:
+      containers:
+      - name: helloworld
+        image: brunoguidone/cka-project
+        ports:
+            - containerPort: 5000
+        resources:
+          requests:
+            memory: "100Mi"
+            cpu: "150m"
+          limits:
+            memory: "200Mi"
+            cpu: "300m"
+      tolerations:
+      - key: node-type
+        operator: Equal
+        value: prod
+        effect: NoSchedule
+---
+apiVersion: autoscaling/v2beta2
+kind: HorizontalPodAutoscaler
+metadata:
+  namespace: labguidone
+  name: helloworld-hpa
+  labels:
+    app: helloworld
+    version: dev      
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: helloworld
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 60
+
+---
+kind: Service
+apiVersion: v1
+metadata:
+   namespace: labguidone
+   name: helloworld-svc
+   labels:
+    app: helloworld
+    version: dev
+spec:
+   selector:
+    app: helloworld
+    version: dev
+   ports:
+   - port: 80
+     targetPort: 5000
+   type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: helloworld-ingress
+  namespace: labguidone
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/load-balance: ewma
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "8k"
+spec:
+  rules:
+  - host: helloworld.guidone.com.br
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: helloworld-svc
+          servicePort: 80
